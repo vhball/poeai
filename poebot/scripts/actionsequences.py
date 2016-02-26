@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Runs a basic loop to watch the screen and use potions
-Potion configuration determination method TBD
+Short key/mouse movement combinations designed to do tedious sequences of
+actions upon request (e.g. some keypress).
 
-using some code from automatetheboringstuff.com/chapter18
-for now to play around with pyautogui
+Examples might include a sequence of less convenient skill buttons mapped to
+an easy key (e.g. M4, M5, Mscroll), or combinations requiring tedious mouse
+patterns (e.g. )
 
-Created on Thu Jan  7 22:55:58 2016
+Created on Fri Jan  8 09:41:39 2016
 
 @author: Michael
 """
