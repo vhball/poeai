@@ -1,4 +1,4 @@
-BOT PLAN (in rough priority order):
+AI PLAN (in rough priority order):
 - create a mouse script that does smooth arcs instead of teleports
 - accept numpad/joystick input for general direction. When pressed, moves
     that direction except when stopping to attack/etc.
