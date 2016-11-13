@@ -230,7 +230,8 @@ if __name__ == "__main__":
     screencap_log = []
     start_time = time.clock()
     win32api.GetAsyncKeyState(exit_script_key_code)  # clear recent presses
-    with ProcessPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
+#    with ProcessPoolExecutor(max_workers=2) as executor:
         try:
             while True:
                 # Capture screen and parse results
