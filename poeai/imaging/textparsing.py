@@ -17,6 +17,7 @@ import time
 # Load templates module-wide so only happens once
 def fetch_templates(resolution):
     # out of 255, what brightness beyond which assume greyscale
+    greyscale_tolerance_labels = 130
     greyscale_tolerance = 180
     # Load comparison templates
     directory = "images/" + resolution + "/"
@@ -34,10 +35,10 @@ def fetch_templates(resolution):
     templates['reserved'] = io.imread(directory + "reserved.png")[:, :, 0]
 
     templates['slash_mask'] = templates['slash'] > greyscale_tolerance
-    templates['life_mask'] = templates['life'] > greyscale_tolerance
-    templates['shield_mask'] = templates['shield'] > greyscale_tolerance
-    templates['mana_mask'] = templates['mana'] > greyscale_tolerance
-    templates['reserved_mask'] = templates['reserved'] > greyscale_tolerance
+    templates['life_mask'] = templates['life'] > greyscale_tolerance_labels
+    templates['shield_mask'] = templates['shield'] > greyscale_tolerance_labels
+    templates['mana_mask'] = templates['mana'] > greyscale_tolerance_labels
+    templates['reserved_mask'] = templates['reserved'] > greyscale_tolerance_labels
 
     return templates
 
@@ -64,6 +65,7 @@ def match_template_masked(image, image_mask,
     search_height = image_height - template_height + 1
 
     tolerance_for_matched_pixels = 7  # on scale of 255, 4 too low, 6-8 ideal?
+#    tolerance_for_matched_pixels = 12  # on scale of 255, 4 too low, 6-8 ideal?
     num_test_pixels = np.count_nonzero(template_mask)  # num template pixels
 
     matchcoords = []
@@ -88,6 +90,7 @@ def match_template_masked(image, image_mask,
 #                       num_test_pixels), flush=True)
 #==============================================================================
 
+#            if abs(np.count_nonzero(greyscale_in_tol) - num_test_pixels) > 3:
             if np.count_nonzero(greyscale_in_tol) == num_test_pixels:
                 matchcoords.append((dy, dx))
                 if stop_when_found:
@@ -97,7 +100,7 @@ def match_template_masked(image, image_mask,
 
 # %%
 def parse_globe_text(image, rows_to_parse=[1,2,3],
-                     tags_to_find=["life", "mana", "shield", "reserved"]):
+                     tags_to_find=["reserved", "life", "mana", "shield"]):
     """
     Given an image of the text above a life globe, searches up to all 3 rows
     for the tag(s) given (should be in order of rows if possible).

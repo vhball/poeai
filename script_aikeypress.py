@@ -4,6 +4,8 @@ Created on Fri Sep 23 00:25:15 2016
 
 TODO: refactor into simpler functions
 
+if eldritch battery, need to mess around with search params
+
 @author: Michael
 """
 
@@ -29,7 +31,8 @@ def update_game_state(game_state):
     images = screen_capture(bboxes_to_capture)
     for image_name, image in zip(bbox_names, images):
         if image_name == "life" or image_name == "mana":
-            stat_results = parse_globe_text(image, rows_to_parse=[1,2,3],
+#            stat_results = parse_globe_text(image, rows_to_parse=[1,2,3],
+            stat_results = parse_globe_text(image, rows_to_parse=[2,3],
                                             tags_to_find=["reserved",
                                                           image_name])
             game_state[image_name + '_frac'] = \
@@ -63,10 +66,10 @@ if __name__ == "__main__":
     game_state = {'life_frac': None, 'mana_frac': None}
     
     # thresholds:
-    life_pot_threshold = 0.8
+    life_pot_threshold = 0.5
     mana_pot_threshold = 0.3
-    danger_pot_threshold = 0.7  # health-triggered by default
-    alt_f4_threshold = 0.4
+    danger_pot_threshold = -0.1  #0.7  # health-triggered by default
+    alt_f4_threshold = -0.1  #0.4
 
     # cooldowns:
     life_pot_cooldown = 0.1
@@ -212,13 +215,13 @@ if __name__ == "__main__":
                                         regroup_mode_cooldown)
 
     loop = asyncio.get_event_loop()
-    asyncio.ensure_future(alt_f4_trigger_coroutine, loop=loop)
+#    asyncio.ensure_future(alt_f4_trigger_coroutine, loop=loop)
     asyncio.ensure_future(life_pot_trigger_coroutine, loop=loop)
-    asyncio.ensure_future(danger_pot_trigger_coroutine, loop=loop)
+#    asyncio.ensure_future(danger_pot_trigger_coroutine, loop=loop)
     asyncio.ensure_future(mana_pot_trigger_coroutine, loop=loop)
 #    asyncio.ensure_future(key_repeat_trigger_coroutine, loop=loop)
-    asyncio.ensure_future(combat_mode_trigger_coroutine, loop=loop)
-    asyncio.ensure_future(regroup_mode_trigger_coroutine, loop=loop)
+#    asyncio.ensure_future(combat_mode_trigger_coroutine, loop=loop)
+#    asyncio.ensure_future(regroup_mode_trigger_coroutine, loop=loop)
 
 
     print("currently assuming:")

@@ -7,64 +7,128 @@ Created on Sat Sep 10 15:19:43 2016
 
 import io
 import time
+import os, sys  # for saving images only
+import win32gui, win32ui, win32con, win32api
 
 import matplotlib.pyplot as plt
 import numpy as np
 import PIL.Image as Image
 import PIL.ImageGrab as ImageGrab  # too slow
-import os, sys  # for saving images only
-import win32gui, win32ui, win32con, win32api
 
+import poeai.commands as cmds
 
 def add_coords(x, y):
     return tuple(x_i + y_i for x_i, y_i in zip(x,y))
 
 
-def get_bboxes_to_capture(target="health and mana"):
+def get_mouse_centered_bbox(fullscreen_bbox, bbox_size=(200, 200)):
+    # if can't return proper size bbox, _don't_ fix or fail silently!
+    bbox_width, bbox_height = bbox_size
+    screen_width = fullscreen_bbox[2] - fullscreen_bbox[0]
+    screen_height = fullscreen_bbox[3] - fullscreen_bbox[1]
+    if bbox_width > screen_width or bbox_height > screen_height:
+        raise ValueError("get_mousepos_bbox: (xwidth, ywidth) larger than " +
+                         "fullscreen bbox dimensions")
+    if bbox_width % 2 != 0 or bbox_height % 2 != 0:
+        raise ValueError("get_mousepos_bbox: xwidth, ywidth must be even")
+    mousex, mousey = cmds.get_coords()
+    bbox =  (mousex - bbox_width // 2,  mousey - bbox_height // 2,
+             mousex + bbox_width // 2,  mousey + bbox_height // 2)
+    # check if outside screen bounds
+    if bbox[0] < fullscreen_bbox[0]:
+        bbox =  (fullscreen_bbox[0],                    bbox[1],
+                 fullscreen_bbox[0] + bbox_width,       bbox[3])
+    elif bbox[2] > fullscreen_bbox[2]:
+        bbox =  (fullscreen_bbox[2] - bbox_width,       bbox[1],
+                 fullscreen_bbox[2],                    bbox[3])
+    if bbox[1] < fullscreen_bbox[1]:
+        bbox =  (bbox[0],               fullscreen_bbox[1],
+                 bbox[2],               fullscreen_bbox[1] + bbox_height)
+    elif bbox[3] > fullscreen_bbox[3]:
+        bbox =  (bbox[0],               fullscreen_bbox[3] - bbox_height,
+                 bbox[2],               fullscreen_bbox[3])
+    return bbox
+
+
+# %%
+def get_bboxes_to_capture(target="all", assume_fullscreen_1080p=False):
+    """
+    Returns a list of 4-tuples (xstart, ystart, xend, yend) showing the
+    coordinate regions that should be captured given the user's detected
+    resolution (must be either 720p or 1080p, windowed is okay).
+    
+    Parameter options:
+    target: default is "all"
+        "all": capture entire window (sans borders if windowed)
+        "life and mana": capture the 3 lines of text above life/mana globes
+            as two images, one for each globe. can just put "life" or "mana"
+            as well to just capture one.
+    """
     # Autodetect resolution
-    hwin = win32gui.FindWindow(None, "Path of Exile")  # Window handle
-    if hwin == 0:
-        raise Exception("Unable to detect Path of Exile running! Aborting...")
-    bbox = win32gui.GetWindowRect(hwin)
-    screen_width = bbox[2] - bbox[0]
-    screen_height = bbox[3] - bbox[1]
-    if screen_width >= 1920 and screen_height >= 1080:
+    if assume_fullscreen_1080p:
         resolution = "1080p"
-        border_width = int((screen_width - 1920)/2)
-        bar_height = int(screen_height - 2*border_width - 1080)
-        window_padding = (border_width, bar_height + border_width,
-                          border_width, bar_height + border_width)
-    elif screen_width >= 1280 and screen_height >= 720:
-        resolution = "720p"
-        border_width = int((screen_width - 1280)/2)
-        bar_height = int(screen_height - 2*border_width - 720)
-        window_padding = (border_width, bar_height + border_width,
-                          border_width, bar_height + border_width)
-    if border_width > 15 or bar_height > 60:
-        raise Exception("get_bboxes_to_capture: " +
-                        "resolution does not appear to be 720p or 1080p!")
+        screen_width = 1920
+        screen_height = 1080
+        window_padding = (0, 0, 0, 0)
+    else:
+        hwin = win32gui.FindWindow(None, "Path of Exile")  # Window handle
+        if hwin == 0:
+            raise Exception("Unable to detect Path of Exile running! " +
+                            "Aborting...")
+        bbox = win32gui.GetWindowRect(hwin)
+        screen_width = bbox[2] - bbox[0]
+        screen_height = bbox[3] - bbox[1]
+        if screen_width >= 1920 and screen_height >= 1080:
+            resolution = "1080p"
+            border_width = int((screen_width - 1920)/2)
+            bar_height = int(screen_height - 2*border_width - 1080)
+            window_padding = (border_width, bar_height + border_width,
+                              border_width, bar_height + border_width)
+        elif screen_width >= 1280 and screen_height >= 720:
+            resolution = "720p"
+            border_width = int((screen_width - 1280)/2)
+            bar_height = int(screen_height - 2*border_width - 720)
+            window_padding = (border_width, bar_height + border_width,
+                              border_width, bar_height + border_width)
+        else:
+            raise Exception("get_bboxes_to_capture: resolution " +
+                            "does not appear to be 720p or 1080p! " +
+                            "detected resultion: {}x{}".format(screen_width,
+                                                               screen_height))        
+        if border_width > 15 or bar_height > 60:
+            raise Exception("get_bboxes_to_capture: resolution " +
+                            "does not appear to be 720p or 1080p! " +
+                            "detected resultion: {}x{}".format(screen_width,
+                                                               screen_height))
             
      # define coordinate box to capture relative to POE window
+    box_names = []
     onscreen_boxes_to_capture = []
     if resolution == "1080p":
         if target == "all":
+            target = "life, mana"
+            box_names.append("full screen")
             onscreen_boxes_to_capture.append(
                 (0, 0, 1920, 1080))  # whole window 1920x1080
-        elif target == "health and mana":
+        if "life" in target:
+            box_names.append("life")
             onscreen_boxes_to_capture.append(
-                (50, 793, 210, 855))  # health/shield text 160x62
+                (50, 795, 210, 857))  # life/shield text 160x62
+        if "mana" in target:
+            box_names.append("mana")
             onscreen_boxes_to_capture.append(
-                (1740, 793, 1900, 855))  # mana/res. text 160x62
-        elif target == "map":
-            onscreen_boxes_to_capture.append(
-                (1642, 7, 1912, 277))  # map 350x350
+                (1740, 795, 1900, 857))  # mana/res. text 160x62
     elif resolution == "720p":
         if target == "all":
+            box_names.append("full screen")
             onscreen_boxes_to_capture.append(
                 (0, 0, 1280, 720))  # whole window 1280x720
-        elif target == "health and mana":
+        if "life" in target:
+            box_names.append("life")
             onscreen_boxes_to_capture.append(
-                (30, 530, 140, 570))  # health/shield text 110x40
+                (30, 530, 140, 570))  # life/shield text 110x40
+        if "mana" in target:
+            box_names.append("mana")
             onscreen_boxes_to_capture.append(
                 (1150, 530, 1260, 570))  # mana/res. text 110x40
     if len(onscreen_boxes_to_capture) == 0:
@@ -74,23 +138,40 @@ def get_bboxes_to_capture(target="health and mana"):
 
     bboxes_to_capture = [add_coords(window_padding, bbox)
                          for bbox in onscreen_boxes_to_capture]
-    return bboxes_to_capture
+    return box_names, bboxes_to_capture
    
 
 
-if __name__ == "__main__":
-    bboxes_to_capture = get_bboxes_to_capture("all")
-#    bboxes_to_capture = get_bboxes_to_capture("health and mana")
-#    bboxes_to_capture = get_bboxes_to_capture("map")
+
+def get_filename(img_lib_category=None):
+    if img_lib_category is not None:
+        save_dir = os.getcwd() + "\\images\\library"
+        for (dirpath, dirnames, filenames) in os.walk(save_dir):
+            category_filenames = [filename
+                                  for filename in filenames
+                                  if img_lib_category in filename]
+            break  # only this top level dir
+        category_indices = [int(filename.split("_")[-1].split(".png")[0])
+                            for filename in category_filenames]
+        if len(category_indices) > 0:
+            new_index = max(category_indices) + 1
+        else:
+            new_index = 0
+        filename = str(img_lib_category) + "_" + str(new_index) + ".png"
+    else:
+        save_dir = os.getcwd() + "\\images"
+        filename = "snapshot__" + str(int(time.time())) + ".png"
+    return save_dir + "\\" + filename
 
 
-# %%
+def capture_and_save_bboxes(bboxes_to_capture, img_category=None):
     #ScreenCapture boxes_to_capture via win32gui
     capture_widths = []
     capture_heights = []
+    bbox_names, bboxes_to_capture = bboxes_to_capture  # name scheme changed
     for bbox in bboxes_to_capture:
-        capture_widths.append(int(bbox[2] - bbox[0]))
-        capture_heights.append(int(bbox[3] - bbox[1]))
+        capture_widths.append(int(bbox[2]) - int(bbox[0]))
+        capture_heights.append(int(bbox[3]) - int(bbox[1]))
 
     start_time = time.clock()
     images = []
@@ -127,8 +208,8 @@ if __name__ == "__main__":
                                   (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
                                   bmp.GetBitmapBits(True),
                                   'raw', 'BGRX', 0, 1)
-            im.save(os.getcwd() + '\\images\\snapshot__' +
-                    str(int(time.time())) + '.png', 'PNG')
+            filename = get_filename(img_category)
+            im.save(filename, 'PNG')
 
         win32gui.DeleteObject(bmp.GetHandle())
         srcdc.DeleteDC()
@@ -140,89 +221,27 @@ if __name__ == "__main__":
     time_elapsed = time.clock() - start_time
     print('Time elapsed: {:.3f} seconds'.format(time_elapsed))
 
+    return images
+
+
+if __name__ == "__main__":
+    bboxes_to_capture = get_bboxes_to_capture("all")
+#    bboxes_to_capture = get_bboxes_to_capture("life and mana")
+#    bboxes_to_capture = get_bboxes_to_capture("map")
+#    img_category = None
+    images = capture_and_save_bboxes(bboxes_to_capture)
+    plt.imshow(images[0], interpolation="nearest")
+
+#    fullscreen_bbox = get_bboxes_to_capture("all")[0]
+#    img_category = "garbage"
     
-# %% TEST SPLITTING CAPTURE IN TWO OVERHEAD
-#==============================================================================
-#     box_to_capture1 = (9, 38, 409, 638)  # left side
-#     capture_width1 = box_to_capture1[2] - box_to_capture1[0]
-#     capture_height1 = box_to_capture1[3] - box_to_capture1[1]
-#     box_to_capture2 = (409, 38, 809, 638)  # right side
-#     capture_width2 = box_to_capture2[2] - box_to_capture2[0]
-#     capture_height2 = box_to_capture2[3] - box_to_capture2[1]
-# 
-#     #ScreenCapture via win32gui in two chunks
-#     start_time = time.clock()
-#     images = []
-#     for ind in range(100):
-#         hwin = win32gui.FindWindow(None, "Path of Exile")  # Window handle
-#         hwindc = win32gui.GetWindowDC(hwin)
-#         # left half
-#         srcdc = win32ui.CreateDCFromHandle(hwindc)
-#         memdc = srcdc.CreateCompatibleDC()
-#         bmp = win32ui.CreateBitmap()
-#         bmp.CreateCompatibleBitmap(srcdc, capture_width1, capture_height1)
-#         memdc.SelectObject(bmp)
-#         memdc.BitBlt((0, 0), (capture_width1, capture_height1), srcdc,
-#                      (box_to_capture1[0], box_to_capture1[1]), win32con.SRCCOPY)
-#         #bmp.SaveBitmapFile(memdc, 'screenshot.bmp')
-#         bmpinfo = bmp.GetInfo()
-#         images.append(np.fromstring(
-#                           bmp.GetBitmapBits(True), dtype=np.uint8).reshape(
-#                               capture_height1, capture_width1, 4)[:,:,2::-1])
-#         win32gui.DeleteObject(bmp.GetHandle())
-#         srcdc.DeleteDC()
-#         memdc.DeleteDC()
-#         win32gui.ReleaseDC(hwin, hwindc)
-#         # right half
-#         hwin = win32gui.FindWindow(None, "Path of Exile")  # Window handle
-#         hwindc = win32gui.GetWindowDC(hwin)
-#         srcdc = win32ui.CreateDCFromHandle(hwindc)
-#         memdc = srcdc.CreateCompatibleDC()
-#         bmp = win32ui.CreateBitmap()
-#         bmp.CreateCompatibleBitmap(srcdc, capture_width2, capture_height2)
-#         memdc.SelectObject(bmp)
-#         memdc.BitBlt((0, 0), (capture_width2, capture_height2), srcdc,
-#                      (box_to_capture2[0], box_to_capture2[1]), win32con.SRCCOPY)
-#         #bmp.SaveBitmapFile(memdc, 'screenshot.bmp')
-#         bmpinfo = bmp.GetInfo()
-#         images.append(np.fromstring(
-#                           bmp.GetBitmapBits(True), dtype=np.uint8).reshape(
-#                               capture_height2, capture_width2, 4)[:,:,2::-1])
-# #        bmpstr = bmp.GetBitmapBits(True)
-# #        images.append(Image.frombuffer(
-# #                          'RGB', (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
-# #                          bmpstr, 'raw', 'BGRX', 0, 1))
-#         win32gui.DeleteObject(bmp.GetHandle())
-#         srcdc.DeleteDC()
-#         memdc.DeleteDC()
-#         win32gui.ReleaseDC(hwin, hwindc)
-# #        images.append(np.hstack((leftimage, rightimage)))
-#     
-# 
-#     #Check time passed during capture:
-#     time_elapsed = time.clock() - start_time
-#     print('Time elapsed: {:.3f} seconds'.format(time_elapsed))
-#==============================================================================
+#    time.sleep(3)
+
+#    for i in range(999):
+#        bboxes_to_capture = [get_mouse_centered_bbox(fullscreen_bbox,
+#                                                     bbox_size=(200, 200))]
+#        images = capture_and_save_bboxes(bboxes_to_capture, img_category)
+
+#    plt.imshow(images[0], interpolation="nearest")
 
 
-# %%
-#==============================================================================
-#     # ScreenCapture via ImageGrab  (almost 10x slower)
-#     box_to_capture = (9, 38, 809, 638)  # border: 9 left/right/bottom, 29 top
-#     capture_width = box_to_capture[2] - box_to_capture[0]
-#     capture_height = box_to_capture[3] - box_to_capture[1]
-#     start_time = time.clock()
-#     images = []
-#     for loop in range(10):
-#         hwin = win32gui.FindWindow(None, "Path of Exile")  # Window handle
-#         bbox = win32gui.GetWindowRect(hwin)
-#         images.append(ImageGrab.grab(bbox))
-# 
-#     #Check time passed during capture:
-#     time_elapsed = time.clock() - start_time
-#     print('Time elapsed: {:.3f} seconds'.format(time_elapsed))
-#==============================================================================
-    
-
-# %%
-plt.imshow(images[0], interpolation="nearest")

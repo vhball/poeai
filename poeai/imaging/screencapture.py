@@ -80,11 +80,11 @@ def get_bboxes_to_capture(target="all", assume_fullscreen_1080p=False):
         if "life" in target:
             box_names.append("life")
             onscreen_boxes_to_capture.append(
-                (50, 793, 210, 855))  # life/shield text 160x62
+                (50, 795, 210, 857))  # life/shield text 160x62
         if "mana" in target:
             box_names.append("mana")
             onscreen_boxes_to_capture.append(
-                (1740, 793, 1900, 855))  # mana/res. text 160x62
+                (1740, 795, 1900, 857))  # mana/res. text 160x62
     elif resolution == "720p":
         if target == "all":
             box_names.append("full screen")
